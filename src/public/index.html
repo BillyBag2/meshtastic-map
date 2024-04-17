@@ -2072,6 +2072,7 @@
     // create layer groups
     var nodesLayerGroup = new L.LayerGroup();
     var neighboursLayerGroup = new L.LayerGroup();
+    var traceRoutesLayerGroup = new L.LayerGroup();
     var nodeNeighboursLayerGroup = new L.LayerGroup();
     var nodesClusteredLayerGroup = L.markerClusterGroup({
         showCoverageOnHover: false,
@@ -2136,6 +2137,7 @@
             "Legend": legendLayerGroup,
             "Neighbours": neighboursLayerGroup,
             "Waypoints": waypointsLayerGroup,
+            "Trace Routes": traceRoutesLayerGroup
         },
     }, {
         // make the "Nodes" group exclusive (use radio inputs instead of checkbox)
@@ -2152,6 +2154,9 @@
     }
     if(enabledOverlayLayers.includes("Neighbours")){
         neighboursLayerGroup.addTo(map);
+    }
+    if(enabledOverlayLayers.includes("Trace Routes")){
+        traceRoutesLayerGroup.addTo(map);
     }
     if(enabledOverlayLayers.includes("Waypoints")){
         waypointsLayerGroup.addTo(map);
@@ -2291,6 +2296,10 @@
 
     function clearAllNeighbours() {
         neighboursLayerGroup.clearLayers();
+    }
+
+    function clearAllTraceroutes() {
+        traceRoutesLayerGroup.clearLayers();
     }
 
     function clearAllWaypoints() {
@@ -2592,6 +2601,7 @@
         closeAllTooltips();
         clearAllNodes();
         clearAllNeighbours();
+        clearAllTraceroutes();
         clearAllWaypoints();
         clearNodeOutline();
         cleanUpNodeNeighbours();
@@ -2814,6 +2824,133 @@
 
     }
 
+    // return a key value pair.
+    function appendHop(from, to, dictionary)
+    {
+        // Make to and from integers.
+        from = parseInt(from);
+        to = parseInt(to);
+        // Make a key unique to the hop.
+        const key = from + "->" + to;
+        dictionary[key] = { from: from, to: to };
+    }
+
+    function onTraceroutesUpdated(updateTraceroutes)
+    {
+        console.log("traceroutes " + updateTraceroutes.length);
+        const hops = {};
+        for(const route of updateTraceroutes) {
+            // A feature is the route is sometimes a string and sometimes an array.
+            routeList = route.route;
+            if (typeof routeList === 'string')
+            {
+                // Parse this string as JSON
+                routeList = JSON.parse(routeList);
+            }
+
+            // Add the first and last hops.
+            first = 0;
+            second = 0;
+            found = false;
+            if (route.want_response)
+            {
+                // Outward route discovery.
+                if (routeList.length > 0)
+                {
+                    //console.log("Discovery");
+                    first = route.from;
+                    second = routeList[0];
+                    found = true;
+                    //console.log("first " + first + " second " + second);
+                }
+            }
+            else
+            {
+                // Return route trace.
+                if (routeList.length > 0)
+                {
+                    //console.log("Trace");
+                    first = route.to;
+                    second = routeList[0];
+                    found = true;
+                }
+                else
+                {
+                    // No hops, direct route.
+                    // Its a reply so order is reversed.
+                    // We do not know if the reply was sent direct.
+                    // We only know the discovery was received directly.
+                    first = route.to;
+                    second = route.from;
+                    found = true;
+                }
+            }
+
+            if (found)
+            {
+                //console.log(route);
+                //console.log("first " + first + " second " + second);
+                appendHop(first, second, hops);
+            }
+            
+            if (routeList.length > 1)
+            {
+                for (let i = 0; i < (routeList.length - 2); i++)
+                {
+                    appendHop(routeList[i], routeList[i + 1], hops);
+                }
+            }
+        }
+
+        // Now run though all the hops.
+        for (const hopKey in hops)
+        {
+            const hop = hops[hopKey];
+            //console.log(hop);
+            const from = findNodeById(hop.from);
+            const to = findNodeById(hop.to);
+
+            if (from && to)
+            {
+                const fromMarker = findNodeMarkerById(from.node_id);
+                const toMarker = findNodeMarkerById(to.node_id);
+
+                if (fromMarker && toMarker)
+                {
+                    const line = L.polyline([
+                        fromMarker.getLatLng(),
+                        toMarker.getLatLng(),
+                    ], {
+                        color: '#D2691E',
+                        opacity: 0.75,
+                    }).arrowheads({
+                        size: '10px',
+                        fill: true,
+                        offsets: {
+                            start: '25px',
+                            end: '25px',
+                        },
+                    }).addTo(traceRoutesLayerGroup);
+
+                    const tooltip = `<b>${escapeString(from.long_name)}</b> -> <b>${escapeString(to.long_name)}</b>`;
+
+                    line.bindTooltip(tooltip, {
+                        sticky: true,
+                        opacity: 1,
+                        interactive: true,
+                    })
+                    .bindPopup(tooltip)
+                    .on('click', function(event) {
+                        // close tooltip on click to prevent tooltip and popup showing at same time
+                        event.target.closeTooltip();
+                    });
+                }
+            }
+        }
+
+        // window._onTraceroutesUpdated(nodes);
+    }
+
     function onWaypointsUpdated(updatedWaypoints) {
 
         // clear nodes cache
@@ -2933,6 +3070,16 @@
             // update waypoints
             var json = await response.json();
             onWaypointsUpdated(json.waypoints);
+
+        });
+
+        // fetch trace routes
+
+        await fetch('/api/v1/traceroutes?count=10000').then(async (response) => {
+
+            // update trace routes
+            var json = await response.json();
+            onTraceroutesUpdated(json.traceroutes);
 
         });
 

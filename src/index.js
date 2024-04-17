@@ -298,6 +298,27 @@ app.get('/api/v1/nodes/:nodeId/traceroutes', async (req, res) => {
     }
 });
 
+app.get('/api/v1/traceroutes', async (req, res) => {
+    try {
+        const count = req.query.count ? parseInt(req.query.count) : 1000; // can't set to null because of $queryRaw
+
+        // get latest traceroutes
+        // We want replies where want_response is false and it will be "to" the
+        // requester.
+        const traceroutes = await prisma.$queryRaw`SELECT * FROM traceroutes WHERE gateway_id is not null order by id desc limit ${count}`;
+
+        res.json({
+            traceroutes: traceroutes,
+        });
+
+    } catch(err) {
+        console.error(err);
+        res.status(500).json({
+            message: "Something went wrong, try again later.",
+        });
+    }
+});
+
 app.get('/api/v1/stats/hardware-models', async (req, res) => {
     try {
 
