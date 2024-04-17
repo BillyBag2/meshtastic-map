@@ -520,6 +520,7 @@ client.on("message", async (topic, message) => {
                 data.voltage = telemetry.deviceMetrics.voltage !== 0 ? telemetry.deviceMetrics.voltage : null;
                 data.channel_utilization = telemetry.deviceMetrics.channelUtilization !== 0 ? telemetry.deviceMetrics.channelUtilization : null;
                 data.air_util_tx = telemetry.deviceMetrics.airUtilTx !== 0 ? telemetry.deviceMetrics.airUtilTx : null;
+                data.uptime_seconds = telemetry.deviceMetrics.uptimeSeconds !== 0 ? telemetry.deviceMetrics.uptimeSeconds : null;
 
                 // create device metric
                 try {
@@ -579,7 +580,9 @@ client.on("message", async (topic, message) => {
 
             if(logKnownPacketTypes) {
                 console.log("TRACEROUTE_APP", {
+                    to: envelope.packet.to.toString(16),
                     from: envelope.packet.from.toString(16),
+                    want_response: envelope.packet.decoded.wantResponse,
                     route_discovery: routeDiscovery,
                 });
             }
@@ -587,7 +590,9 @@ client.on("message", async (topic, message) => {
             try {
                 await prisma.traceRoute.create({
                     data: {
-                        node_id: envelope.packet.from,
+                        to: envelope.packet.to,
+                        from: envelope.packet.from,
+                        want_response: envelope.packet.decoded.wantResponse,
                         route: routeDiscovery.route,
                         channel: envelope.packet.channel,
                         packet_id: envelope.packet.id,

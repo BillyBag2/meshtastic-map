@@ -27,6 +27,10 @@
     <link rel="stylesheet" href="plugins/leaflet.markercluster/MarkerCluster.css"/>
     <link rel="stylesheet" href="plugins/leaflet.markercluster/MarkerCluster.Default.css"/>
 
+    <!-- leaflet groupedlayercontrol -->
+    <script src="plugins/leaflet.groupedlayercontrol/leaflet.groupedlayercontrol.js"></script>
+    <link rel="stylesheet" href="plugins/leaflet.groupedlayercontrol/leaflet.groupedlayercontrol.css"/>
+
     <!-- moment -->
     <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
 
@@ -163,7 +167,7 @@
                         <template v-if="searchedNodes.length > 0">
 
                             <div @click="onSearchResultNodeClick(node)" class="p-2 hover:bg-gray-100 cursor-pointer" v-for="node of searchedNodes">
-                                <div class="text-gray-900">{{ node.long_name !== '' ? node.long_name : "-" }}</div>
+                                <div class="text-gray-900" :class="{ 'text-red-500': node.latitude == null || node.longitude == null }">{{ node.long_name !== '' ? node.long_name : "-" }}</div>
                                 <div class="flex space-x-1 text-sm text-gray-700">
                                     <div>Short Name: {{ node.short_name !== '' ? node.short_name : "-" }}</div>
                                     <div class="text-gray-500">/</div>
@@ -841,6 +845,22 @@
                                         </div>
                                     </li>
 
+                                    <li>
+                                        <div class="relative flex items-center">
+                                            <div class="block flex-1 px-4 py-2">
+                                                <div class="relative flex min-w-0 flex-1 items-center">
+                                                    <div class="w-full">
+                                                        <p class="truncate text-sm font-medium text-gray-900">Uptime</p>
+                                                        <p class="truncate text-sm text-gray-700">
+                                                            <span v-if="selectedNode.uptime_seconds">{{ selectedNode.uptime_seconds }} seconds</span>
+                                                            <span v-else class="text-gray-500">???</span>
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </li>
+
                                 </ul>
                             </div>
 
@@ -894,8 +914,8 @@
                                                 <div class="block flex-1 px-4 py-2">
                                                     <div class="relative flex min-w-0 flex-1 items-center">
                                                         <div>
-                                                            <p class="text-sm font-medium text-gray-900">{{ traceroute.route.length }} hops {{ traceroute.channel_id ? `on ${traceroute.channel_id}` : '' }}</p>
-                                                            <div class="text-sm text-gray-700">Gated {{ moment(new Date(traceroute.updated_at)).fromNow() }}</div>
+                                                            <p class="text-sm text-gray-900"><span class="font-medium">{{ findNodeById(traceroute.to)?.long_name || '???' }}</span> to <span class="font-medium">{{ findNodeById(traceroute.from)?.long_name || '???' }}</span></p>
+                                                            <div class="text-sm text-gray-700">{{ moment(new Date(traceroute.updated_at)).fromNow() }} - {{ traceroute.route.length }} hops {{ traceroute.channel_id ? `on ${traceroute.channel_id}` : '' }}</div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1075,7 +1095,7 @@
                             <div class="flex items-start justify-between">
                                 <div>
                                     <h2 class="font-bold">Traceroute #{{ selectedTraceRoute.id }}</h2>
-                                    <h3 class="text-sm">{{ moment(new Date(selectedTraceRoute.updated_at)).fromNow() }}</h3>
+                                    <h3 class="text-sm">{{ moment(new Date(selectedTraceRoute.updated_at)).fromNow() }} - {{ selectedTraceRoute.route.length }} hops {{ selectedTraceRoute.channel_id ? `on ${selectedTraceRoute.channel_id}` : '' }}</h3>
                                 </div>
                                 <div class="my-auto ml-3 flex h-7 items-center">
                                     <a href="javascript:void(0)" class="rounded-full" @click="selectedTraceRoute = null">
@@ -1098,7 +1118,7 @@
                                 <ul role="list" class="space-y-6">
 
                                     <!-- node that initiated traceroute -->
-                                    <li :onclick="`goToNode(${selectedTraceRoute.node_id})`" class="relative flex gap-x-4">
+                                    <li :onclick="`goToNode(${selectedTraceRoute.to})`" class="relative flex gap-x-4">
                                         <div class="absolute left-0 top-0 flex w-6 justify-center top-6 -bottom-6">
                                             <div class="w-px bg-gray-200"></div>
                                         </div>
@@ -1106,8 +1126,8 @@
                                             <div class="h-4 w-4 rounded-full bg-gray-100 ring-1 ring-gray-300"></div>
                                         </div>
                                         <div class="flex-auto py-0.5 text-sm leading-5 text-gray-500">
-                                            <div class="font-medium text-gray-900">{{ findNodeById(selectedTraceRoute.node_id)?.long_name || '???' }}</div>
-                                            <div>Hex ID: !{{ Number(selectedTraceRoute.node_id).toString(16) }}</div>
+                                            <div class="font-medium text-gray-900">{{ findNodeById(selectedTraceRoute.to)?.long_name || '???' }}</div>
+                                            <div>Hex ID: !{{ Number(selectedTraceRoute.to).toString(16) }}</div>
                                             <div>Started the traceroute</div>
                                         </div>
                                     </li>
@@ -1127,8 +1147,23 @@
                                         </div>
                                     </li>
 
-                                    <!-- last node in route -->
-                                    <li :onclick="`goToNode(${route})`" v-if="selectedTraceRoute.gateway_id" class="relative flex gap-x-4">
+                                    <!-- node that replied to traceroute -->
+                                    <li :onclick="`goToNode(${selectedTraceRoute.from})`" v-if="selectedTraceRoute.from" class="relative flex gap-x-4">
+                                        <div class="absolute left-0 top-0 flex w-6 justify-center -bottom-6">
+                                            <div class="w-px bg-gray-200"></div>
+                                        </div>
+                                        <div class="my-auto relative flex h-6 w-6 flex-none items-center justify-center bg-white">
+                                            <div class="h-4 w-4 rounded-full bg-gray-100 ring-1 ring-gray-300"></div>
+                                        </div>
+                                        <div class="flex-auto py-0.5 text-sm leading-5 text-gray-500">
+                                            <div class="font-medium text-gray-900">{{ findNodeById(selectedTraceRoute.from)?.long_name || '???' }}</div>
+                                            <div>Hex ID: !{{ Number(selectedTraceRoute.from).toString(16) }}</div>
+                                            <div>Replied to traceroute</div>
+                                        </div>
+                                    </li>
+
+                                    <!-- node that gated traceroute to mqtt -->
+                                    <li :onclick="`goToNode(${selectedTraceRoute.gateway_id})`" v-if="selectedTraceRoute.gateway_id" class="relative flex gap-x-4">
                                         <div class="absolute left-0 top-0 flex w-6 justify-center h-6">
                                             <div class="w-px bg-gray-200"></div>
                                         </div>
@@ -1402,6 +1437,14 @@
 
     function setConfigEnableMapAnimations(value) {
         return localStorage.setItem("config_enable_map_animations", value);
+    }
+
+    function getConfigMapSelectedTileLayer() {
+        return localStorage.getItem("config_map_selected_tile_layer") || "OpenStreetMap";
+    }
+
+    function setConfigMapSelectedTileLayer(layer) {
+        return localStorage.setItem("config_map_selected_tile_layer", layer);
     }
 
     function getConfigMapEnabledOverlayLayers() {
@@ -1879,7 +1922,12 @@
                 this.isShowingMobileSearch = false;
 
                 // go to node
-                window.goToNode(node.node_id);
+                if(window.goToNode(node.node_id)){
+                    return;
+                }
+
+                // fallback to showing node details since we can't go to the node
+                window.showNodeDetails(node.node_id);
 
             },
             dismissInfoModal: function() {
@@ -1987,10 +2035,39 @@
     // remove leaflet link
     map.attributionControl.setPrefix('');
 
-    var openStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    var openStreetMapTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 22, // increase from 18 to 22
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | Data from <a target="_blank" href="https://meshtastic.org/docs/software/integrations/mqtt/">Meshtastic</a>',
-    }).addTo(map);
+        attribution: 'Tiles &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | Data from <a target="_blank" href="https://meshtastic.org/docs/software/integrations/mqtt/">Meshtastic</a>',
+    });
+
+    var esriWorldImageryTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 21, // esri doesn't have tiles closer than this
+        attribution: 'Tiles &copy; <a href="https://developers.arcgis.com/documentation/mapping-apis-and-services/deployment/basemap-attribution/">Esri</a> | Data from <a target="_blank" href="https://meshtastic.org/docs/software/integrations/mqtt/">Meshtastic</a>'
+    });
+
+    var googleSatelliteTileLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        maxZoom: 21,
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        attribution: 'Tiles &copy; Google | Data from <a target="_blank" href="https://meshtastic.org/docs/software/integrations/mqtt/">Meshtastic</a>'
+    });
+
+    var googleHybridTileLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
+        maxZoom: 21,
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        attribution: 'Tiles &copy; Google | Data from <a target="_blank" href="https://meshtastic.org/docs/software/integrations/mqtt/">Meshtastic</a>'
+    });
+
+    var tileLayers = {
+        "OpenStreetMap": openStreetMapTileLayer,
+        "Esri Satellite": esriWorldImageryTileLayer,
+        "Google Satellite": googleSatelliteTileLayer,
+        "Google Hybrid": googleHybridTileLayer,
+    };
+
+    // use tile layer based on config
+    const selectedTileLayerName = getConfigMapSelectedTileLayer();
+    const selectedTileLayer = tileLayers[selectedTileLayerName] || openStreetMapTileLayer;
+    selectedTileLayer.addTo(map);
 
     // create layer groups
     var nodesLayerGroup = new L.LayerGroup();
@@ -2032,17 +2109,10 @@
         return div;
     };
 
-    var baseLayers = {
-        "Nodes (All)": nodesLayerGroup,
-        "Nodes (Clustered)": nodesClusteredLayerGroup,
-        "Nodes (Hide All)": new L.LayerGroup(),
-    };
-
-    var overlays = {
-        "Legend": legendLayerGroup,
-        "Neighbours": neighboursLayerGroup,
-        "Waypoints": waypointsLayerGroup,
-    };
+    // handle baselayerchange to update tile layer preference
+    map.on('baselayerchange', function(event) {
+        setConfigMapSelectedTileLayer(event.name);
+    });
 
     // handle adding/remove legend on map (can't use L.Control as an overlay, so we toggle an empty L.LayerGroup)
     map.on('overlayadd overlayremove', function(event) {
@@ -2056,7 +2126,21 @@
     });
 
     // add layers to control ui
-    L.control.layers(baseLayers, overlays).addTo(map);
+    L.control.groupedLayers(tileLayers, {
+        "Nodes": {
+            "All": nodesLayerGroup,
+            "Clustered": nodesClusteredLayerGroup,
+            "None": new L.LayerGroup(),
+        },
+        "Overlays": {
+            "Legend": legendLayerGroup,
+            "Neighbours": neighboursLayerGroup,
+            "Waypoints": waypointsLayerGroup,
+        },
+    }, {
+        // make the "Nodes" group exclusive (use radio inputs instead of checkbox)
+        exclusiveGroups: ["Nodes"],
+    }).addTo(map);
 
     // enable base layers
     nodesClusteredLayerGroup.addTo(map);
@@ -2157,14 +2241,14 @@
         var node = findNodeById(id);
         if(!node){
             alert("Could not find node: " + id);
-            return;
+            return false;
         }
 
         // find node marker by id
         var nodeMarker = findNodeMarkerById(id);
         if(!nodeMarker){
-            alert("Could not find node on map: " + id);
-            return;
+            alert("Could not find a position for node: " + id);
+            return false;
         }
 
         // close all popups and tooltips
@@ -2185,6 +2269,9 @@
             interactive: true, // allow clicking buttons inside tooltip
             permanent: true, // don't auto dismiss when clicking buttons inside tooltip
         });
+
+        // successfully went to node
+        return true;
 
     }
 
@@ -2274,9 +2361,6 @@
         // close tooltips and popups
         closeAllPopups();
         closeAllTooltips();
-
-        // turn off neighbours layer
-        neighboursLayerGroup.removeFrom(map);
 
         // setup node neighbours layer
         nodeNeighboursLayerGroup.clearLayers();
@@ -2558,6 +2642,9 @@
                 }
             }
 
+            // add to cache
+            nodes.push(node);
+
             // skip nodes without position
             if(!node.latitude || !node.longitude){
                 continue;
@@ -2637,7 +2724,6 @@
                 });
 
                 // add to cache
-                nodes.push(node);
                 nodeMarkers[node.node_id] = marker;
 
             }
@@ -2684,7 +2770,7 @@
                         neighbourNodeMarker.getLatLng(),
                     ], {
                         color: '#2563eb',
-                        opacity: 0.5,
+                        opacity: 0.75,
                         offset: polylineOffset,
                     }).addTo(neighboursLayerGroup);
 
